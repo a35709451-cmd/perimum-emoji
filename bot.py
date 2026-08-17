@@ -4,18 +4,25 @@ import logging
 import re
 import json
 import os
+import sys
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 # Get token from environment variable
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8921145943:AAFfyn314OGVK2X4hJrjGy3fePqwKl-_m0U")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    logger.error("❌ BOT_TOKEN environment variable not set!")
+    sys.exit(1)
+
 EMOJI_FILE = "emojis.json"
 
+# Default premium emojis
 PREMIUM_EMOJIS = {
     "verified": {"id": "6147565374289220368", "fallback": "✅", "added_by": "system", "date": "2024-01-01"},
     "flex": {"id": "6147464060305676048", "fallback": "😎", "added_by": "system", "date": "2024-01-01"},
@@ -54,8 +61,11 @@ def save_emojis():
     try:
         with open(EMOJI_FILE, 'w', encoding='utf-8') as f:
             json.dump(PREMIUM_EMOJIS, f, ensure_ascii=False, indent=2)
+        logger.info("✅ Emojis saved successfully")
+        return True
     except Exception as e:
-        logger.error(f"Error saving emojis: {e}")
+        logger.error(f"❌ Error saving emojis: {e}")
+        return False
 
 def load_emojis():
     global PREMIUM_EMOJIS
@@ -63,12 +73,19 @@ def load_emojis():
         if os.path.exists(EMOJI_FILE):
             with open(EMOJI_FILE, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
+                # Merge loaded emojis with defaults
                 for key, value in loaded.items():
-                    if key not in PREMIUM_EMOJIS:
-                        PREMIUM_EMOJIS[key] = value
-                logger.info(f"Loaded {len(loaded)} emojis from file")
+                    PREMIUM_EMOJIS[key] = value
+                logger.info(f"✅ Loaded {len(loaded)} emojis from file")
+                return True
+        else:
+            # Create default emojis file
+            save_emojis()
+            logger.info("✅ Created default emojis file")
+            return True
     except Exception as e:
-        logger.error(f"Error loading emojis: {e}")
+        logger.error(f"❌ Error loading emojis: {e}")
+        return False
 
 def get_emoji_html(name):
     if name in PREMIUM_EMOJIS:
@@ -154,7 +171,6 @@ async def myemojis_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     verified = get_emoji_html("verified")
-    dollar = get_emoji_html("dollar")
     stars = get_emoji_html("stars")
     
     message = f"{verified} Help Guide\n\n" + format_with_emojis(
@@ -511,10 +527,24 @@ def process_text_with_emojis(text):
     return result
 
 def main():
-    load_emojis()
+    logger.info("🚀 Starting Telegram Premium Emoji Bot...")
     
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Load emojis
+    if not load_emojis():
+        logger.error("❌ Failed to load emojis. Exiting...")
+        sys.exit(1)
     
+    logger.info("✅ Emojis loaded successfully")
+    
+    # Create application
+    try:
+        application = Application.builder().token(BOT_TOKEN).build()
+        logger.info("✅ Application built successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to build application: {e}")
+        sys.exit(1)
+    
+    # Add command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("ads", ads_command))
     application.add_handler(CommandHandler("myemojis", myemojis_command))
@@ -523,8 +553,15 @@ def main():
     application.add_handler(CommandHandler("addemoji", addemoji_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Bot is starting... Press Ctrl+C to stop.")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("✅ All handlers registered")
+    logger.info("🤖 Bot is ready and polling for updates...")
+    
+    # Start polling
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"❌ Bot polling error: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
